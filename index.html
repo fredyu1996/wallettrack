@@ -865,13 +865,21 @@ function getBiweeklyDueDates(rec, upToDate) {
 
 function applyRecurring(rec, dateStr) {
   const date = dateStr || (() => {
-    const yr = curYr, mth = curMth;
+    const now = new Date();
+    const yr = now.getFullYear(), mth = now.getMonth();
     const day = Math.min(rec.day||1, new Date(yr, mth+1, 0).getDate());
     return `${yr}-${String(mth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
   })();
+
+  // Don't create duplicate transaction
+  const alreadyExists = txns.some(t => t.recurId === rec.id && t.date === date);
+  if (alreadyExists) return;
+
   const t = {id:Date.now(), type:'expense', cat:rec.cat, amt:rec.amt, cur:rec.cur,
              note:rec.name, date, recurId:rec.id, bankId:rec.bankId||null};
   txns.unshift(t);
+
+  // Only deduct bank when creating new transaction
   if (rec.bankId) {
     const bank = banks.find(b=>b.id===rec.bankId);
     if (bank) {
@@ -880,10 +888,13 @@ function applyRecurring(rec, dateStr) {
         const hkd = toHKD(rec.amt, rec.cur);
         delta = bank.cur==='HKD'?hkd : bank.cur==='CAD'?hkd/RATE : hkd/USD_HKD;
       }
-      bank.amt -= delta; bank.updated = Date.now(); saveBanks();
+      bank.amt -= delta;
+      bank.updated = Date.now();
+      saveBanks();
     }
   }
-  save(); updateTotalAssets();
+  save();
+  updateTotalAssets();
 }
 
 function autoApplyDue() {
@@ -1351,22 +1362,19 @@ function resetAllData() {
 }
 
 // ── Init ──
-// Show local data immediately, then sync from cloud
-autoApplyDue();
 render();
 fetchAsterPrice();
 
-// Pull latest from Supabase then re-render
+// Pull latest from Supabase then apply recurring + render
 (async () => {
   await pullAllFromCloud();
-  // Save to localStorage as cache
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(txns));
     localStorage.setItem(REC_KEY, JSON.stringify(recurrings));
     localStorage.setItem(BANKS_KEY, JSON.stringify(banks));
     localStorage.setItem(CRYPTO_KEY, JSON.stringify(cryptoData));
   } catch(e) {}
-  autoApplyDue();
+  autoApplyDue(); // only run ONCE after cloud data is loaded
   render();
   if (curTab === 'assets') renderAssets();
   if (curTab === 'recurring') renderRecurring();
