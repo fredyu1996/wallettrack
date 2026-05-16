@@ -899,14 +899,18 @@ function applyRecurring(rec, dateStr) {
 
 function autoApplyDue() {
   const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
   const realMth = now.getMonth();
   const realYr = now.getFullYear();
-  // IMPORTANT: always use real today's date, never curMth/curYr
-  // so browsing future months never triggers auto-apply
+
   recurrings.forEach(rec => {
     if (rec.freq==='biweekly') {
+      // Only apply if due date is today or earlier
       getBiweeklyDueDates(rec, now).forEach(d => {
-        if (!isAppliedThisPeriod(rec, d)) applyRecurring(rec, d.toISOString().split('T')[0]);
+        const dStr = d.toISOString().split('T')[0];
+        if (dStr <= todayStr && !isAppliedThisPeriod(rec, d)) {
+          applyRecurring(rec, dStr);
+        }
       });
     } else {
       // Only apply if real today >= pay day of real current month
@@ -1050,17 +1054,29 @@ function addRecurring() {
     rec.startDate=document.getElementById('rec-start-date').value;
   }
   recurrings.push(rec); saveRec(); closeRecSheet();
-  const now=new Date();
+
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+
   if (recFreq==='biweekly') {
-    getBiweeklyDueDates(rec,now).forEach(d=>{
-      if (!isAppliedThisPeriod(rec,d)) applyRecurring(rec,d.toISOString().split('T')[0]);
+    // Only apply dates that are today or earlier
+    getBiweeklyDueDates(rec, now).forEach(d => {
+      const dStr = d.toISOString().split('T')[0];
+      if (dStr <= todayStr && !isAppliedThisPeriod(rec, d)) {
+        applyRecurring(rec, dStr);
+      }
     });
   } else {
-    const realMth=now.getMonth(), realYr=now.getFullYear();
-    const realPfx=`${realYr}-${String(realMth+1).padStart(2,'0')}`;
-    const already=txns.some(t=>t.recurId===rec.id&&t.date.startsWith(realPfx));
-    if (!already && now.getDate()>=rec.day) applyRecurring(rec);
+    // Only apply if this month AND today >= pay day
+    const realMth = now.getMonth(), realYr = now.getFullYear();
+    const realPfx = `${realYr}-${String(realMth+1).padStart(2,'0')}`;
+    const already = txns.some(t => t.recurId===rec.id && t.date.startsWith(realPfx));
+    if (!already && now.getDate() >= rec.day) {
+      applyRecurring(rec);
+    }
+    // Future months: do nothing, autoApplyDue will handle when the date arrives
   }
+
   save(); updateTotalAssets(); render();
   showToast(`✓ 已新增：${name}`);
 }
