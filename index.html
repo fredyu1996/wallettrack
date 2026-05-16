@@ -348,15 +348,11 @@ body{height:100%;font-family:-apple-system,'Helvetica Neue',sans-serif;color:var
     </div>
     <div class="f-row" id="monthly-day-row">
       <div class="f-lbl">每月幾號扣數</div>
-      <select class="pay-day-sel" id="rec-day">
-        <option value="1">每月 1 號</option>
-        <option value="5">每月 5 號</option>
-        <option value="10" selected>每月 10 號</option>
-        <option value="15">每月 15 號</option>
-        <option value="20">每月 20 號</option>
-        <option value="25">每月 25 號</option>
-        <option value="28">每月 28 號</option>
-      </select>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input class="a-inp" id="rec-day" type="number" min="1" max="31" placeholder="例：3" inputmode="numeric"
+          style="font-size:22px;max-width:80px;border-bottom:2px solid var(--accent);"/>
+        <span style="font-size:13px;color:var(--muted);">號（1–31）</span>
+      </div>
     </div>
     <div class="f-row" id="biweekly-row" style="display:none;">
       <div class="f-lbl">第一次扣數日期</div>
@@ -892,16 +888,24 @@ function applyRecurring(rec, dateStr) {
 
 function autoApplyDue() {
   const now = new Date();
-  const isCurMth = (curMth===now.getMonth() && curYr===now.getFullYear());
+  const realMth = now.getMonth();
+  const realYr = now.getFullYear();
+  // IMPORTANT: always use real today's date, never curMth/curYr
+  // so browsing future months never triggers auto-apply
   recurrings.forEach(rec => {
     if (rec.freq==='biweekly') {
-      if (!(now.getMonth()===curMth && now.getFullYear()===curYr)) return;
       getBiweeklyDueDates(rec, now).forEach(d => {
         if (!isAppliedThisPeriod(rec, d)) applyRecurring(rec, d.toISOString().split('T')[0]);
       });
     } else {
-      if (!isCurMth) return;
-      if (!isAppliedThisMth(rec) && now.getDate()>=(rec.day||1)) applyRecurring(rec);
+      // Only apply if real today >= pay day of real current month
+      const realPfx = `${realYr}-${String(realMth+1).padStart(2,'0')}`;
+      const alreadyApplied = txns.some(t => t.recurId === rec.id && t.date.startsWith(realPfx));
+      if (!alreadyApplied && now.getDate() >= (rec.day||1)) {
+        const day = Math.min(rec.day||1, new Date(realYr, realMth+1, 0).getDate());
+        const dateStr = `${realYr}-${String(realMth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        applyRecurring(rec, dateStr);
+      }
     }
   });
 }
@@ -1014,7 +1018,7 @@ function openRecSheet() {
   recActCat='🏠 住房'; recFreq='monthly'; recBankId=null;
   document.getElementById('rec-amt').value='';
   document.getElementById('rec-name').value='';
-  document.getElementById('rec-day').value='10';
+  document.getElementById('rec-day').value='';
   document.getElementById('rec-start-date').value=new Date().toISOString().split('T')[0];
   selFreq('monthly'); buildRecCats(); buildRecBankPicker();
   document.getElementById('rec-overlay').classList.add('open');
@@ -1027,8 +1031,13 @@ function addRecurring() {
   if (!amt||amt<=0||!name) return;
   const cur=document.getElementById('rec-cur-pick').value;
   const rec={id:Date.now(),name,cat:recActCat,amt,cur,freq:recFreq,bankId:recBankId};
-  if (recFreq==='monthly') rec.day=parseInt(document.getElementById('rec-day').value);
-  else rec.startDate=document.getElementById('rec-start-date').value;
+  if (recFreq==='monthly') {
+    const day = parseInt(document.getElementById('rec-day').value);
+    if (!day || day < 1 || day > 31) { document.getElementById('rec-day').focus(); return; }
+    rec.day = day;
+  } else {
+    rec.startDate=document.getElementById('rec-start-date').value;
+  }
   recurrings.push(rec); saveRec(); closeRecSheet();
   const now=new Date();
   if (recFreq==='biweekly') {
@@ -1036,8 +1045,10 @@ function addRecurring() {
       if (!isAppliedThisPeriod(rec,d)) applyRecurring(rec,d.toISOString().split('T')[0]);
     });
   } else {
-    const isCur=(curMth===now.getMonth()&&curYr===now.getFullYear());
-    if (isCur&&now.getDate()>=rec.day) applyRecurring(rec);
+    const realMth=now.getMonth(), realYr=now.getFullYear();
+    const realPfx=`${realYr}-${String(realMth+1).padStart(2,'0')}`;
+    const already=txns.some(t=>t.recurId===rec.id&&t.date.startsWith(realPfx));
+    if (!already && now.getDate()>=rec.day) applyRecurring(rec);
   }
   save(); updateTotalAssets(); render();
   showToast(`✓ 已新增：${name}`);
