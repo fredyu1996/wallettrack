@@ -506,7 +506,8 @@ function toDisp(amt, fromCur) {
 function fmt(amt, cur) {
   const sym = cur === 'CAD' ? 'C$' : 'HK$';
   const n = Math.abs(amt);
-  return sym + (n % 1 === 0 ? Math.round(n).toLocaleString() : n.toFixed(2));
+  const str = sym + (n % 1 === 0 ? Math.round(n).toLocaleString() : n.toFixed(2));
+  return amt < 0 ? '-' + str : str;
 }
 function fmtD(amt) { return fmt(amt, disCur); }
 
@@ -543,7 +544,9 @@ function render() {
   const net = inc - exp;
   document.getElementById('v-inc').textContent = '+' + fmtD(inc);
   document.getElementById('v-exp').textContent = '-' + fmtD(exp);
-  document.getElementById('v-net').textContent = (net>=0?'+':'') + fmtD(net);
+  const netEl = document.getElementById('v-net');
+  netEl.textContent = (net >= 0 ? '+' : '') + fmtD(net);
+  netEl.style.color = net >= 0 ? 'var(--save)' : 'var(--expense)';
   document.getElementById('mth-lbl').textContent = MONTHS[curMth];
   renderChart(mt);
   renderList(filtTxns(mt));
