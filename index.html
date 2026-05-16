@@ -238,6 +238,22 @@ body{height:100%;font-family:-apple-system,'Helvetica Neue',sans-serif;color:var
         </div>
       </div>
     </div>
+
+    <!-- Debt toggle row -->
+    <div id="debt-toggle-row" style="padding:8px 16px 4px;border-top:1px solid var(--border);">
+      <button onclick="toggleDebtPanel()" style="width:100%;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:14px;">💳</span>
+          <span style="font-size:12px;color:var(--muted);">負債總額</span>
+          <span style="font-size:13px;font-weight:600;color:#f87171;font-variant-numeric:tabular-nums;" id="debt-header-amt">HK$0</span>
+          <button onclick="event.stopPropagation();toggleDebtAmt()" id="debt-hide-btn" style="background:none;border:none;font-size:12px;color:var(--hint);cursor:pointer;padding:0 2px;">👁</button>
+        </div>
+        <span style="font-size:11px;color:var(--hint);" id="debt-toggle-arrow">詳情 ›</span>
+      </button>
+      <!-- Expandable debt panel -->
+      <div id="debt-panel" style="display:none;margin-top:8px;"></div>
+    </div>
+
     <div class="strip">
       <div class="bal"><div class="bal-l">收入</div><div class="bal-v" id="v-inc" style="color:var(--income)"></div></div>
       <div class="sep"></div>
@@ -252,6 +268,7 @@ body{height:100%;font-family:-apple-system,'Helvetica Neue',sans-serif;color:var
       <div class="tab" onclick="chTab('save',this)">儲蓄</div>
       <div class="tab" onclick="chTab('recurring',this)">🔁 固定</div>
       <div class="tab" onclick="chTab('assets',this)">💰 資產</div>
+      <div class="tab" onclick="chTab('debt',this)">💳 管理</div>
     </div>
   </div>
 
@@ -402,7 +419,75 @@ body{height:100%;font-family:-apple-system,'Helvetica Neue',sans-serif;color:var
   </div>
 </div>
 
+<!-- Debt Sheet -->
+<div class="overlay" id="debt-overlay" onclick="if(event.target===this)closeDebtSheet()">
+  <div class="sheet" style="max-height:90vh;overflow-y:auto;">
+    <div class="handle"></div>
+    <div class="s-title" id="debt-sheet-title">新增貸款 <button class="s-close" onclick="closeDebtSheet()">×</button></div>
+    <div class="f-row" style="padding-top:14px;">
+      <div class="f-lbl">貸款名稱</div>
+      <input class="n-inp" id="debt-name" type="text" placeholder="例：車貸、信用卡、個人貸款..."/>
+    </div>
+    <div class="f-row">
+      <div class="f-lbl">圖示</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:24px;cursor:pointer;" onclick="selDebtIco('🚗')">🚗</span>
+        <span style="font-size:24px;cursor:pointer;" onclick="selDebtIco('🏠')">🏠</span>
+        <span style="font-size:24px;cursor:pointer;" onclick="selDebtIco('💳')">💳</span>
+        <span style="font-size:24px;cursor:pointer;" onclick="selDebtIco('🎓')">🎓</span>
+        <span style="font-size:24px;cursor:pointer;" onclick="selDebtIco('💰')">💰</span>
+        <span style="font-size:24px;cursor:pointer;" onclick="selDebtIco('📱')">📱</span>
+      </div>
+      <div style="margin-top:6px;font-size:13px;color:var(--muted);">已選：<span id="debt-ico-preview">💳</span></div>
+    </div>
+    <div class="amt-row">
+      <select class="cur-sel" id="debt-cur">
+        <option value="HKD">🇭🇰 HKD</option>
+        <option value="CAD">🇨🇦 CAD</option>
+        <option value="USD">🇺🇸 USD</option>
+      </select>
+      <input class="a-inp" id="debt-balance" type="number" placeholder="貸款餘額" inputmode="decimal" step="0.01"/>
+    </div>
+    <div class="f-row">
+      <div class="f-lbl">每月還款額</div>
+      <input class="n-inp" id="debt-monthly" type="number" placeholder="例：2000" inputmode="decimal" step="0.01"/>
+    </div>
+    <div class="f-row">
+      <div class="f-lbl">剩餘期數（月）</div>
+      <input class="n-inp" id="debt-months" type="number" placeholder="例：24" inputmode="numeric" min="1"/>
+    </div>
+    <button class="s-btn" style="background:#ef4444;" onclick="saveDebt()">儲存貸款</button>
+  </div>
+</div>
+
 <script>
+// ── Debt styles injected ──
+const debtStyle = document.createElement('style');
+debtStyle.textContent = `
+.debt-summary-card{margin:14px 16px 0;background:linear-gradient(135deg,#2a1a1a,#3a1a1a);border:1px solid rgba(239,68,68,.3);border-radius:18px;padding:18px;}
+.debt-summary-card .at-label{color:rgba(255,255,255,.5);}
+.debt-summary-card .at-amt{color:#fca5a5;}
+.debt-item{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:8px;}
+.debt-item-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.debt-ico{width:40px;height:40px;border-radius:12px;background:rgba(239,68,68,.12);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+.debt-info{flex:1;}
+.debt-name{font-size:14px;font-weight:600;}
+.debt-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+.debt-right{text-align:right;}
+.debt-bal{font-size:16px;font-weight:700;color:#f87171;font-variant-numeric:tabular-nums;}
+.debt-orig{font-size:10px;color:var(--hint);}
+.debt-progress-wrap{margin-top:4px;}
+.debt-progress-row{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:4px;}
+.debt-bar-bg{background:rgba(255,255,255,.08);border-radius:4px;height:6px;overflow:hidden;}
+.debt-bar-fill{height:6px;border-radius:4px;background:linear-gradient(90deg,#ef4444,#f87171);transition:width .4s ease;}
+.debt-actions{display:flex;gap:8px;margin-top:10px;}
+.debt-action-btn{flex:1;padding:8px;border-radius:10px;border:1px solid var(--border);background:none;font-size:12px;font-weight:500;cursor:pointer;color:var(--muted);font-family:inherit;}
+.debt-action-btn.pay{background:rgba(52,211,153,.12);color:var(--income);border-color:rgba(52,211,153,.3);}
+.debt-action-btn.edit{background:rgba(99,102,241,.12);color:var(--accent);border-color:rgba(99,102,241,.3);}
+.debt-action-btn.del{background:rgba(239,68,68,.1);color:#f87171;border-color:rgba(239,68,68,.3);}
+.debt-empty{text-align:center;padding:40px 16px;color:var(--hint);font-size:13px;}
+`;
+document.head.appendChild(debtStyle);
 // ── Constants ──
 const RATE = 5.72; // 1 CAD = x HKD
 const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
@@ -461,19 +546,21 @@ async function pushAllToCloud() {
     sbSet('recurrings', recurrings),
     sbSet('banks', banks),
     sbSet('crypto', cryptoData),
+    sbSet('debts', debts),
   ]);
   showSyncStatus('done');
 }
 
 async function pullAllFromCloud() {
   showSyncStatus('syncing');
-  const [t, r, b, c] = await Promise.all([
-    sbGet('txns'), sbGet('recurrings'), sbGet('banks'), sbGet('crypto')
+  const [t, r, b, c, d] = await Promise.all([
+    sbGet('txns'), sbGet('recurrings'), sbGet('banks'), sbGet('crypto'), sbGet('debts')
   ]);
   if (t) txns = t;
   if (r) recurrings = r;
   if (b) banks = b;
   if (c) cryptoData = {...cryptoData, ...c};
+  if (d) debts = d;
   showSyncStatus('done');
 }
 
@@ -517,6 +604,7 @@ function setCur(c) {
   document.getElementById('p-hkd').className = 'pill pill-hkd' + (c==='HKD'?' on':'');
   document.getElementById('p-cad').className = 'pill pill-cad' + (c==='CAD'?' on':'');
   document.getElementById('rate').textContent = c==='CAD' ? '1 CAD ≈ 5.72 HKD' : '1 HKD ≈ 0.175 CAD';
+  updateDebtHeader();
   render();
 }
 function chMth(d) {
@@ -537,7 +625,8 @@ function filtTxns(list) {
 
 // ── Render ──
 function render() {
-  updateTotalAssets(); // always recalc from banks+crypto first
+  updateTotalAssets();
+  updateDebtHeader();
   const mt = mthTxns();
   const inc = mt.filter(t=>t.type==='income').reduce((a,t)=>a+toDisp(t.amt,t.cur),0);
   const exp = mt.filter(t=>t.type==='expense').reduce((a,t)=>a+toDisp(t.amt,t.cur),0);
@@ -704,13 +793,16 @@ function chTab(t, el) {
   curTab = t;
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
   el.classList.add('on');
-  document.querySelector('.fab').style.display = (t==='assets') ? 'none' : 'flex';
+  document.querySelector('.fab').style.display = (t==='assets'||t==='debt') ? 'none' : 'flex';
   if (t === 'recurring') {
     document.querySelector('.sec').style.display = 'none';
     renderRecurring();
   } else if (t === 'assets') {
     document.querySelector('.sec').style.display = 'none';
     renderAssets();
+  } else if (t === 'debt') {
+    document.querySelector('.sec').style.display = 'none';
+    renderDebt();
   } else {
     document.querySelector('.sec').style.display = '';
     renderList(filtTxns(mthTxns()));
@@ -1363,6 +1455,226 @@ function editMargin() {
 // Auto-refresh price every 60 seconds when on assets tab
 setInterval(() => { if (curTab === 'assets') fetchAsterPrice(); }, 60000);
 
+
+let debtPanelOpen = false;
+
+let debtAmtHidden = false;
+
+function toggleDebtAmt() {
+  debtAmtHidden = !debtAmtHidden;
+  const btn = document.getElementById('debt-hide-btn');
+  if (btn) btn.textContent = debtAmtHidden ? '🙈' : '👁';
+  updateDebtHeader();
+  // Also hide/show amounts in expanded panel if open
+  if (debtPanelOpen) toggleDebtPanel(); // close and reopen to refresh
+  if (debtPanelOpen) toggleDebtPanel();
+}
+
+function updateDebtHeader() {
+  const totalHKD = debtTotalHKD();
+  const el = document.getElementById('debt-header-amt');
+  if (el) el.textContent = debtAmtHidden ? '****' : fmtD(toDisp(totalHKD, 'HKD'));
+}
+
+function toggleDebtPanel() {
+  debtPanelOpen = !debtPanelOpen;
+  const panel = document.getElementById('debt-panel');
+  const arrow = document.getElementById('debt-toggle-arrow');
+  if (debtPanelOpen) {
+    arrow.textContent = '收起 ‹';
+    // Render mini debt list inside panel
+    if (!debts.length) {
+      panel.innerHTML = `<div style="text-align:center;padding:12px;font-size:12px;color:var(--hint);">暫無貸款 · 去「💳 管理」新增</div>`;
+    } else {
+      panel.innerHTML = debts.map(d => {
+        const dispBal = debtAmtHidden ? '****' : fmtD(toDisp(toHKD(d.balance, d.cur), 'HKD'));
+        const dispMonthly = debtAmtHidden ? '****' : fmtD(toDisp(toHKD(d.monthly, d.cur), 'HKD'));
+        const pct = d.originalBalance > 0 ? Math.round(((d.originalBalance - d.balance) / d.originalBalance) * 100) : 0;
+        return `<div style="background:var(--card);border:1px solid rgba(239,68,68,.2);border-radius:12px;padding:10px 12px;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:16px;">${d.ico}</span>
+              <div>
+                <div style="font-size:12px;font-weight:600;">${d.name}</div>
+                <div style="font-size:10px;color:var(--muted);">每月還 ${dispMonthly} · 剩 ${d.monthsLeft} 期</div>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:13px;font-weight:700;color:#f87171;">${dispBal}</div>
+            </div>
+          </div>
+          <div style="background:rgba(255,255,255,.06);border-radius:4px;height:4px;">
+            <div style="width:${pct}%;height:4px;border-radius:4px;background:linear-gradient(90deg,#ef4444,#f87171);"></div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+    panel.style.display = 'block';
+  } else {
+    arrow.textContent = '詳情 ›';
+    panel.style.display = 'none';
+  }
+}
+const DEBT_KEY = 'wt_debts_v1';
+let debts = (() => { try { return JSON.parse(localStorage.getItem(DEBT_KEY)) || null; } catch(e) { return null; } })() || [];
+
+function saveDebts() {
+  try { localStorage.setItem(DEBT_KEY, JSON.stringify(debts)); } catch(e){}
+  scheduleSave();
+}
+
+function debtTotalHKD() {
+  return debts.reduce((a, d) => a + toHKD(d.balance, d.cur), 0);
+}
+
+function renderDebt() {
+  const totalHKD = debtTotalHKD();
+  const totalDisp = toDisp(totalHKD, 'HKD');
+  const totalMonthly = debts.reduce((a, d) => a + toHKD(d.monthly, d.cur), 0);
+
+  let html = `
+    <div style="padding:0 0 16px;">
+      <div class="debt-summary-card">
+        <div class="at-label">總負債 Total Debt</div>
+        <div class="at-amt" style="font-size:32px;font-weight:700;letter-spacing:-1px;">${fmtD(totalDisp)}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:8px;">
+          <div>
+            <div style="font-size:10px;color:rgba(255,255,255,.4);">每月還款</div>
+            <div style="font-size:14px;font-weight:600;color:#fca5a5;">${fmtD(toDisp(totalMonthly,'HKD'))}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:10px;color:rgba(255,255,255,.4);">${debts.length} 筆貸款</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;">唔計入總資產</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 8px;">
+        <div style="font-size:11px;color:var(--hint);text-transform:uppercase;letter-spacing:.6px;">貸款明細</div>
+        <button onclick="openDebtSheet(null)" style="background:var(--accent);color:#fff;border:none;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">＋ 新增</button>
+      </div>
+
+      <div style="padding:0 16px;">`;
+
+  if (!debts.length) {
+    html += `<div class="debt-empty">暫無貸款記錄<br><span style="font-size:11px;display:block;margin-top:4px;">點「＋ 新增」加入</span></div>`;
+  } else {
+    debts.forEach(d => {
+      const dispBal = toDisp(toHKD(d.balance, d.cur), 'HKD');
+      const dispMonthly = toDisp(toHKD(d.monthly, d.cur), 'HKD');
+      const origBal = d.cur !== disCur ? `原 ${fmt(d.balance, d.cur)}` : '';
+      // Progress: how much paid vs original
+      const origTotal = d.originalBalance || d.balance;
+      const paidPct = origTotal > 0 ? Math.round(((origTotal - d.balance) / origTotal) * 100) : 0;
+      const monthsLeft = d.monthsLeft || 0;
+      const yrs = Math.floor(monthsLeft / 12);
+      const mths = monthsLeft % 12;
+      const timeStr = yrs > 0 ? `${yrs}年${mths}個月` : `${mths}個月`;
+
+      html += `<div class="debt-item">
+        <div class="debt-item-top">
+          <div class="debt-ico">${d.ico}</div>
+          <div class="debt-info">
+            <div class="debt-name">${d.name}</div>
+            <div class="debt-meta">
+              <span class="ctag ctag-${d.cur.toLowerCase()}">${d.cur}</span>
+              <span style="margin-left:4px;">剩餘 ${timeStr}</span>
+            </div>
+          </div>
+          <div class="debt-right">
+            <div class="debt-bal">${fmtD(dispBal)}</div>
+            ${origBal ? `<div class="debt-orig">${origBal}</div>` : ''}
+          </div>
+        </div>
+        <div class="debt-progress-wrap">
+          <div class="debt-progress-row">
+            <span>每月還 ${fmtD(dispMonthly)}</span>
+            <span>已還 ${paidPct}%</span>
+          </div>
+          <div class="debt-bar-bg">
+            <div class="debt-bar-fill" style="width:${paidPct}%;"></div>
+          </div>
+        </div>
+        <div class="debt-actions">
+          <button class="debt-action-btn pay" onclick="payDebt(${d.id})">✓ 還款一期</button>
+          <button class="debt-action-btn edit" onclick="openDebtSheet(${d.id})">✏️ 編輯</button>
+          <button class="debt-action-btn del" onclick="delDebt(${d.id})">🗑 刪除</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  html += `</div></div>`;
+  document.getElementById('txns').innerHTML = html;
+  document.querySelector('.sec').style.display = 'none';
+}
+
+// Pay one instalment — deduct monthly from balance, reduce months left
+function payDebt(id) {
+  const d = debts.find(x=>x.id===id);
+  if (!d) return;
+  d.balance = Math.max(0, d.balance - d.monthly);
+  d.monthsLeft = Math.max(0, d.monthsLeft - 1);
+  saveDebts();
+  renderDebt();
+  showToast(`✓ ${d.name} 已還款 ${fmt(d.monthly, d.cur)}`);
+}
+
+function delDebt(id) {
+  if (!confirm('確定刪除此貸款？')) return;
+  debts = debts.filter(x=>x.id!==id);
+  saveDebts();
+  renderDebt();
+  showToast('已刪除貸款');
+}
+
+// Debt sheet
+let editingDebtId = null;
+let selectedDebtIco = '💳';
+
+function selDebtIco(ico) {
+  selectedDebtIco = ico;
+  const el = document.getElementById('debt-ico-preview');
+  if (el) el.textContent = ico;
+}
+
+function openDebtSheet(id) {
+  editingDebtId = id;
+  const d = id ? debts.find(x=>x.id===id) : null;
+  document.getElementById('debt-sheet-title').innerHTML = (d?'編輯貸款':'新增貸款') + ' <button class="s-close" onclick="closeDebtSheet()">×</button>';
+  document.getElementById('debt-name').value = d ? d.name : '';
+  document.getElementById('debt-balance').value = d ? d.balance : '';
+  document.getElementById('debt-monthly').value = d ? d.monthly : '';
+  document.getElementById('debt-months').value = d ? d.monthsLeft : '';
+  document.getElementById('debt-cur').value = d ? d.cur : 'HKD';
+  selectedDebtIco = d ? d.ico : '💳';
+  const prev = document.getElementById('debt-ico-preview');
+  if (prev) prev.textContent = selectedDebtIco;
+  document.getElementById('debt-overlay').classList.add('open');
+  setTimeout(()=>document.getElementById('debt-name').focus(), 350);
+}
+
+function closeDebtSheet() { document.getElementById('debt-overlay').classList.remove('open'); }
+
+function saveDebt() {
+  const name = document.getElementById('debt-name').value.trim();
+  const balance = parseFloat(document.getElementById('debt-balance').value);
+  const monthly = parseFloat(document.getElementById('debt-monthly').value);
+  const monthsLeft = parseInt(document.getElementById('debt-months').value);
+  const cur = document.getElementById('debt-cur').value;
+  if (!name || !balance || !monthly || !monthsLeft) return;
+
+  if (editingDebtId) {
+    const d = debts.find(x=>x.id===editingDebtId);
+    if (d) { d.name=name; d.balance=balance; d.monthly=monthly; d.monthsLeft=monthsLeft; d.cur=cur; d.ico=selectedDebtIco; }
+  } else {
+    debts.push({id:Date.now(), name, ico:selectedDebtIco, balance, originalBalance:balance, monthly, monthsLeft, cur});
+  }
+  saveDebts();
+  closeDebtSheet();
+  renderDebt();
+  showToast(`✓ ${name} 已儲存`);
+}
 
 // ── First launch reset check ──
 const APP_VERSION = 'wt_v2_clean';
