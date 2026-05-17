@@ -548,20 +548,22 @@ async function pushAllToCloud() {
     sbSet('banks', banks),
     sbSet('crypto', cryptoData),
     sbSet('debts', debts),
+    sbSet('skips', skippedRecurring),
   ]);
   showSyncStatus('done');
 }
 
 async function pullAllFromCloud() {
   showSyncStatus('syncing');
-  const [t, r, b, c, d] = await Promise.all([
-    sbGet('txns'), sbGet('recurrings'), sbGet('banks'), sbGet('crypto'), sbGet('debts')
+  const [t, r, b, c, d, sk] = await Promise.all([
+    sbGet('txns'), sbGet('recurrings'), sbGet('banks'), sbGet('crypto'), sbGet('debts'), sbGet('skips')
   ]);
   if (t) txns = t;
   if (r) recurrings = r;
   if (b) banks = b;
   if (c) cryptoData = {...cryptoData, ...c};
   if (d) debts = d;
+  if (sk) skippedRecurring = sk;
   showSyncStatus('done');
 }
 
@@ -774,6 +776,11 @@ function confirmDel() {
     }
   }
 
+  // If this is a recurring transaction, mark as skipped so it won't re-apply
+  if (t.recurId) {
+    addSkip(t.recurId, t.date);
+  }
+
   txns.splice(idx,1);
   save();
   closeConfirm();
@@ -959,6 +966,30 @@ function getBiweeklyDueDates(rec, upToDate) {
   return dates;
 }
 
+// ── Skipped recurring tracker ──
+// Stores "recurId_dateStr" keys that user manually deleted — never re-apply these
+const SKIP_KEY = 'wt_skip_v1';
+let skippedRecurring = (() => {
+  try { return JSON.parse(localStorage.getItem(SKIP_KEY)) || []; } catch(e) { return []; }
+})();
+
+function saveSkips() {
+  try { localStorage.setItem(SKIP_KEY, JSON.stringify(skippedRecurring)); } catch(e){}
+  scheduleSave();
+}
+
+function isSkipped(recurId, dateStr) {
+  return skippedRecurring.includes(`${recurId}_${dateStr}`);
+}
+
+function addSkip(recurId, dateStr) {
+  const key = `${recurId}_${dateStr}`;
+  if (!skippedRecurring.includes(key)) {
+    skippedRecurring.push(key);
+    saveSkips();
+  }
+}
+
 function applyRecurring(rec, dateStr) {
   const date = dateStr || (() => {
     const now = new Date();
@@ -966,6 +997,9 @@ function applyRecurring(rec, dateStr) {
     const day = Math.min(rec.day||1, new Date(yr, mth+1, 0).getDate());
     return `${yr}-${String(mth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
   })();
+
+  // Don't re-apply if user manually deleted this entry
+  if (isSkipped(rec.id, date)) return;
 
   // Don't create duplicate transaction
   const alreadyExists = txns.some(t => t.recurId === rec.id && t.date === date);
