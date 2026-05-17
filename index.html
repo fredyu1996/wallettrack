@@ -247,7 +247,7 @@ body{height:100%;font-family:-apple-system,'Helvetica Neue',sans-serif;color:var
           <span style="font-size:14px;">💳</span>
           <span style="font-size:12px;color:var(--muted);">負債總額</span>
           <span style="font-size:13px;font-weight:600;color:#f87171;font-variant-numeric:tabular-nums;" id="debt-header-amt">HK$0</span>
-          <button onclick="event.stopPropagation();toggleDebtAmt()" id="debt-hide-btn" style="background:none;border:none;font-size:12px;color:var(--hint);cursor:pointer;padding:0 2px;">👁</button>
+          <span onclick="event.stopPropagation();toggleDebtAmt()" id="debt-hide-btn" style="font-size:14px;cursor:pointer;padding:0 4px;line-height:1;">👁</span>
         </div>
         <span style="font-size:11px;color:var(--hint);" id="debt-toggle-arrow">詳情 ›</span>
       </button>
@@ -1273,6 +1273,8 @@ function timeAgo(ts) {
 }
 
 function renderAssets() {
+  const txnsEl = document.getElementById('txns');
+  if (!txnsEl) return;
   const price = cryptoData.asterPrice;
   const spotUSD = price ? cryptoData.asterSpot * price : null;
   const spotHKD = spotUSD ? spotUSD * USD_HKD : null;
@@ -1294,7 +1296,7 @@ function renderAssets() {
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;">
         <button onclick="fetchAsterPrice()" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;color:#fff;padding:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;" id="at-refresh-btn">↻ 更新幣價</button>
-        <button onclick="updateTotalAssets();renderAssets();showToast('✓ 已刷新');" style="flex:1;background:rgba(99,102,241,.3);border:1px solid rgba(99,102,241,.5);border-radius:10px;color:#fff;padding:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">⟳ 刷新總資產</button>
+        <button onclick="updateTotalAssets();renderAssets();showToast('✓ 已刷新');" style="flex:1;background:rgba(99,102,241,.3);border:1px solid rgba(99,102,241,.5);border-radius:10px;color:#fff;padding:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">⟳ 刷新</button>
       </div>
     </div>
 
@@ -1385,12 +1387,10 @@ function renderAssets() {
     </div>
   </div>`;
 
-  document.getElementById('txns').innerHTML = html;
+  txnsEl.innerHTML = html;
   document.querySelector('.sec').style.display = 'none';
   document.querySelector('.fab').style.display = 'none';
 }
-
-// ── Bank sheet ──
 let editingBankId = null;
 let selectedBankIco = '🏦';
 function selBankIco(ico) { selectedBankIco = ico; document.getElementById('bank-ico-preview').textContent = ico; }
